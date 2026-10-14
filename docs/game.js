@@ -7,6 +7,34 @@ let run = createRun(), pressing = false, lastTime = 0, visualTime = 0, width = 1
 let overlayKind = 'intro', helpWasPaused = false, soundOn = false, audio = null, soundClock = 0, lastGate = 0, resultShown = false, toastTime = 0;
 let best = 0;
 try { best = Number(localStorage.getItem('brakepoint-best') || 0); } catch {}
+let view = '2d', requestedView = '3d', renderer3d = null, loading3d = null, unavailable3d = false;
+
+function applyView(value) {
+  view = value;
+  canvas.parentElement.classList.toggle('three-dimensional', value === '3d');
+  canvas.classList.toggle('hidden', value === '3d'); $('world3d').classList.toggle('hidden', value !== '3d');
+  $('view3d').setAttribute('aria-pressed', String(value === '3d')); $('view2d').setAttribute('aria-pressed', String(value === '2d'));
+  resize();
+}
+function fallback3d() {
+  unavailable3d = true; requestedView = '2d'; applyView('2d');
+  $('view3d').disabled = true; $('viewStatus').textContent = '3D 暂不可用，已切换至 2D';
+}
+async function changeView(value) {
+  setPress(false); requestedView = value;
+  if (value === '2d') { applyView('2d'); return; }
+  if (unavailable3d) return;
+  if (!renderer3d) {
+    $('viewStatus').textContent = '正在准备 3D…';
+    loading3d ||= import('./scene3d.js').then(({ createScene3D }) => {
+      renderer3d = createScene3D($('world3d'), fallback3d); renderer3d.resize(width, height);
+      $('viewStatus').textContent = '';
+    }).catch(error => { console.warn('3D scene unavailable', error); fallback3d(); });
+    await loading3d;
+  }
+  if (requestedView === '3d' && !unavailable3d) applyView('3d');
+}
+$('view3d').onclick = () => changeView('3d'); $('view2d').onclick = () => changeView('2d');
 
 function tone(freq, duration = .1, kind = 'sine', volume = .04) {
   if (!soundOn) return;
@@ -22,9 +50,10 @@ function tone(freq, duration = .1, kind = 'sine', volume = .04) {
 
 function showPanel(kind, html) {
   overlayKind = kind; $('panel').innerHTML = html; $('overlay').classList.remove('hidden');
+  $('overlay').append($('viewControls'));
   $('panel').querySelector('button')?.focus({ preventScroll: true });
 }
-function hidePanel() { overlayKind = ''; $('overlay').classList.add('hidden'); }
+function hidePanel() { overlayKind = ''; canvas.parentElement.append($('viewControls')); $('overlay').classList.add('hidden'); }
 function intro() {
   showPanel('intro', `<div class="overline">THE ART OF LETTING GO</div><h1>临界制动<span>留住最后一米。</span></h1><p class="intro-copy">夜间下坡，制动系统异常。你仅剩一块脆弱的踏板。<br>把握加压与卸力的节奏，<strong>别让力度超过 1612 N。</strong></p><div class="steps"><span><b>01</b>弯道降到 80 / 55</span><span><b>02</b>驶入绿色停车区</span><span><b>03</b>车速降到 3 以下</span></div><div class="start-row"><button id="start" class="primary-button">开始挑战 <span>↗</span></button><span class="start-side">空格或触控踏板<br>按住加压 · 松开卸力</span></div><div class="start-hint">长按约 1.7 秒就会突破断裂线。试着点按稳住力度。<br>本作场景与物理均为虚构；1612 N 不是实际车辆安全阈值。</div>${best ? `<div class="best-badge">个人最佳 ${best} 分</div>` : ''}`);
   $('start').onclick = start;
@@ -75,20 +104,25 @@ $('pause').onclick = pause; $('help').onclick = help;
 $('sound').onclick = () => { soundOn = !soundOn; $('sound').textContent = `音效 ${soundOn ? 'ON' : 'OFF'}`; $('sound').setAttribute('aria-pressed', String(soundOn)); $('sound').setAttribute('aria-label', soundOn ? '关闭音效' : '开启音效'); tone(660, .15); };
 window.addEventListener('keydown', event => {
   if (event.code === 'Tab' && overlayKind) {
-    const buttons = [...$('panel').querySelectorAll('button')]; const index = buttons.indexOf(document.activeElement);
+    const buttons = [...$('overlay').querySelectorAll('button:not(:disabled)')]; const index = buttons.indexOf(document.activeElement);
     if (event.shiftKey && index <= 0) { event.preventDefault(); buttons.at(-1)?.focus(); }
     else if (!event.shiftKey && index === buttons.length - 1) { event.preventDefault(); buttons[0]?.focus(); }
   }
+  if (event.code === 'Space' && (event.target === $('view3d') || event.target === $('view2d'))) return;
   if (event.code === 'Space') { event.preventDefault(); if (!event.repeat) { if (overlayKind === 'intro' || overlayKind === 'result') start(); else if (overlayKind === 'pause') resume(); else setPress(true); } }
   if (event.code === 'KeyR' && !event.repeat) { event.preventDefault(); start(); }
   if (event.code === 'Escape' && !event.repeat) { event.preventDefault(); if (overlayKind === 'help') closeHelp(); else if (overlayKind === 'pause') resume(); else if (run.phase === 'running') pause(); }
 });
-window.addEventListener('keyup', event => { if (event.code === 'Space') { event.preventDefault(); setPress(false); } });
+window.addEventListener('keyup', event => {
+  if (event.code !== 'Space') return;
+  setPress(false);
+  if (event.target !== $('view3d') && event.target !== $('view2d')) event.preventDefault();
+});
 window.addEventListener('blur', () => { setPress(false); if (run.phase === 'running' && !run.paused) pause(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { setPress(false); if (run.phase === 'running' && !run.paused) pause(); } });
 $('overlay').setAttribute('role', 'dialog'); $('overlay').setAttribute('aria-modal', 'true'); $('overlay').setAttribute('aria-label', '游戏菜单');
-function resize() { const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height; const dpr = Math.min(2, devicePixelRatio || 1); canvas.width = width * dpr; canvas.height = height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
-new ResizeObserver(resize).observe(canvas);
+function resize() { const rect = canvas.parentElement.getBoundingClientRect(); width = rect.width; height = rect.height; const dpr = Math.min(2, devicePixelRatio || 1); canvas.width = width * dpr; canvas.height = height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); renderer3d?.resize(width, height); }
+new ResizeObserver(resize).observe(canvas.parentElement);
 
 function updateHUD() {
   const target = nextTarget(run), speed = Math.round(run.speed * 3.6), force = Math.round(run.force);
@@ -195,6 +229,6 @@ function frame(timestamp) {
   if(run.gates>lastGate&&run.phase==='running'){lastGate=run.gates;toastTime=2.2;$('sceneMessage').textContent=run.gates===1?'第一弯道通过 · 前方限速 55':'第二弯道通过 · 准备驶入绿色停车区';tone(750,.13);}
   if(run.phase==='running'&&!run.paused){toastTime-=dt;if(toastTime<=0)$('sceneMessage').textContent=run.force>=1370?'危险！立即松开踏板':run.distance>=460?'已进入停车区 · 在这里停下':'';soundClock+=dt;if(run.force>=1370&&soundClock>.23){soundClock=0;tone(1000,.08,'square',.015);}}
   if(!resultShown&&((run.phase==='failed'&&run.failureTime>2.15)||(run.phase==='won'&&phaseBefore==='won'))){resultShown=true;result();}
-  updateHUD();draw();requestAnimationFrame(frame);
+  updateHUD();if(view === '3d') renderer3d.render(run, dt); else draw();requestAnimationFrame(frame);
 }
-intro();resize();requestAnimationFrame(frame);
+intro();resize();changeView('3d');requestAnimationFrame(frame);
