@@ -20,7 +20,7 @@ test('the 3D road follows engine distance, has two bends and a level parking bay
 });
 
 test('road headings remain continuous at curve entry and exit, including station interpolation', () => {
-  for (const distance of [180, 250, 350, 420, 460]) {
+  for (const distance of [180, 240, 250, 350, 410, 420, 460]) {
     const a = roadPose(distance - .001), b = roadPose(distance + .001);
     assert.ok(Math.abs(a.heading - b.heading) < .0001);
     assert.ok(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < .00201);
@@ -32,6 +32,17 @@ test('front wheels point into both bends for a vehicle facing negative Z', () =>
   assert.ok(-Math.sin(steeringAt(215)) > 0, 'right bend steers toward positive X');
   assert.ok(-Math.sin(steeringAt(385)) < 0, 'left bend steers toward negative X');
   assert.ok(Math.abs(steeringAt(450)) < 1e-8);
+});
+
+test('both bends and the visible wheel angles are pronounced without folding road edges', () => {
+  assert.ok(roadPose(240).heading > .95, 'first bend turns at least 54 degrees');
+  assert.ok(roadPose(350).heading - roadPose(410).heading > 1.3, 'second bend turns at least 74 degrees');
+  for (const distance of [210, 380]) assert.ok(Math.abs(steeringAt(distance)) > .18, 'wheel angle remains visible from chase view');
+  for (let distance = 0; distance <= 560; distance++) {
+    const curvature = Math.abs(roadPose(distance + 1).heading - roadPose(distance - 1).heading) / 2;
+    assert.ok(curvature * 10 < 1, 'inside shoulder radius remains positive');
+    assert.ok(Math.abs(steeringAt(distance)) < .35, 'wheel steering stays below 20 degrees');
+  }
 });
 
 test('both views share the original force, curve, stop and pause contracts', () => {
