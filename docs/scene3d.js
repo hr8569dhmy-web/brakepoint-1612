@@ -5,7 +5,7 @@ import { RULES } from './engine.js';
 const ROAD_START = -40, ROAD_END = 650, DOWNHILL = -.012;
 const DRIVING_LANE = 4.95;
 const ease = value => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
-const headingAt = distance => .7 * ease((distance - RULES.gates[0].at) / 70) - 1 * ease((distance - RULES.gates[1].at) / 70);
+const headingAt = distance => 1.05 * ease((distance - RULES.gates[0].at) / 60) - 1.4 * ease((distance - RULES.gates[1].at) / 60);
 const heightAt = distance => DOWNHILL * Math.min(distance, RULES.bayStart);
 const stations = [{ x: 0, z: 0 }];
 for (let distance = ROAD_START; distance < ROAD_END; distance++) {
@@ -22,37 +22,42 @@ export function roadPose(distance, lateral = 0) {
   return { x: a.x + (b.x - a.x) * fraction - origin.x + Math.cos(heading) * lateral, y: heightAt(clamped), z: a.z + (b.z - a.z) * fraction - origin.z + Math.sin(heading) * lateral, heading };
 }
 
-export function steeringAt(distance) { return -(headingAt(distance + 3) - headingAt(distance)) * 1.5; }
+// A small visual gain makes wheel steering legible from the chase camera.
+export function steeringAt(distance) {
+  const curvature = (headingAt(distance + 1) - headingAt(distance - 1)) / 2;
+  return -Math.atan(3.38 * curvature) * 2.4;
+}
 
 export function createScene3D(canvas, onUnavailable) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
-  const scene = new THREE.Scene(); scene.background = new THREE.Color('#172f3c'); scene.fog = new THREE.Fog('#172f3c', 95, 360);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#172c3a'); scene.fog = new THREE.Fog('#233642', 95, 360);
   const camera = new THREE.PerspectiveCamera(48, 1, .1, 1500);
-  const sun = new THREE.DirectionalLight('#ffe2b4', 3); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+  const sun = new THREE.DirectionalLight('#ffd3a0', 3.4); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = sun.shadow.camera.bottom = -13; sun.shadow.camera.right = sun.shadow.camera.top = 13;
-  sun.shadow.camera.near = 1; sun.shadow.camera.far = 70; sun.shadow.bias = -.0003;
-  scene.add(sun, sun.target, new THREE.HemisphereLight('#b5dff1', '#29312e', 1.8));
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 70; sun.shadow.bias = -.0003; sun.shadow.normalBias = .018;
+  scene.add(sun, sun.target, new THREE.HemisphereLight('#a4c8ef', '#283233', .85));
 
   // A local studio environment gives the paint and chrome useful reflections.
-  const environment = new THREE.Scene(); environment.background = new THREE.Color('#778a8d');
-  for (const [x, y, z, width, height] of [[-6, 3, 0, 3, 7], [6, 4, 0, 4, 8], [0, 8, -4, 8, 5]]) {
-    const light = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ color: new THREE.Color('#f0e4cb').multiplyScalar(3), side: THREE.DoubleSide }));
+  const environment = new THREE.Scene(); environment.background = new THREE.Color('#34495c');
+  for (const [x, y, z, width, height, color, intensity] of [[-7, 4, 1, 3, 7, '#b5d6ff', 3], [6, 5, -6, 8, 5, '#ffe0ad', 5], [0, 9, 1, 5, 9, '#d2e4fa', 2]]) {
+    const light = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
     light.position.set(x, y, z); light.lookAt(0, 0, 0); environment.add(light);
   }
-  const pmrem = new THREE.PMREMGenerator(renderer), environmentMap = pmrem.fromScene(environment, .12);
-  scene.environment = environmentMap.texture; scene.environmentIntensity = .65; pmrem.dispose();
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshBasicMaterial({ color: '#0b131c' })); ground.rotation.x = -Math.PI / 2; ground.position.y = -1; environment.add(ground);
+  const pmrem = new THREE.PMREMGenerator(renderer), environmentMap = pmrem.fromScene(environment, .055);
+  scene.environment = environmentMap.texture; scene.environmentIntensity = .85; pmrem.dispose();
   environment.traverse(item => { if (item.isMesh) { item.geometry.dispose(); item.material.dispose(); } });
 
   const sky = new THREE.Mesh(new THREE.SphereGeometry(1100, 24, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     vertexShader: 'varying vec3 direction; void main(){ direction=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: 'varying vec3 direction; void main(){ float h=normalize(direction).y; vec3 low=vec3(.21,.31,.34); vec3 high=vec3(.015,.055,.10); gl_FragColor=vec4(mix(low,high,smoothstep(-.02,.55,h)),1.0); }'
+    fragmentShader: 'varying vec3 direction; void main(){ vec3 d=normalize(direction); float h=d.y; vec3 low=mix(vec3(.22,.30,.35),vec3(.48,.29,.20),pow(max(0.0,d.x),3.0)); vec3 high=vec3(.015,.04,.09); gl_FragColor=vec4(mix(low,high,smoothstep(-.03,.55,h)),1.0); }'
   })); scene.add(sky);
   const moon = new THREE.Mesh(new THREE.SphereGeometry(14, 16, 12), new THREE.MeshBasicMaterial({ color: '#e4ead1', fog: false })); moon.position.set(-240, 170, 650); scene.add(moon);
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(2200, 2200), new THREE.MeshStandardMaterial({ color: '#18353e', metalness: .45, roughness: .32 }));
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(2200, 2200), new THREE.MeshStandardMaterial({ color: '#102c39', metalness: .2, roughness: .55, envMapIntensity: .12 }));
   sea.rotation.x = -Math.PI / 2; sea.position.set(0, -11, -300); scene.add(sea);
 
   function strip(start, end, left, right, elevation, material, interval = 2) {
@@ -65,7 +70,7 @@ export function createScene3D(canvas, onUnavailable) {
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geometry.setIndex(indices); geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, material); mesh.receiveShadow = true; scene.add(mesh); return mesh;
   }
-  const asphalt = new THREE.MeshStandardMaterial({ color: '#30363c', roughness: .94 });
+  const asphalt = new THREE.MeshStandardMaterial({ color: '#262e37', roughness: .78 });
   const shoulders = new THREE.MeshStandardMaterial({ color: '#5b645f', roughness: 1 });
   const white = new THREE.MeshStandardMaterial({ color: '#c1cbc0', roughness: .8 });
   strip(ROAD_START, ROAD_END, -10, 10, -.06, shoulders); strip(ROAD_START, ROAD_END, -7, 7, 0, asphalt);
@@ -133,6 +138,8 @@ export function createScene3D(canvas, onUnavailable) {
     mountain.position.set(p.x, p.y + height / 2 - 6, p.z); mountain.rotation.y = index; scene.add(mountain);
   }
   const car = createCar(); scene.add(car.root);
+  const headlights = new THREE.SpotLight('#d4e8ff', 95, 38, .62, .7, 2);
+  headlights.position.set(0, .9, -2.7); headlights.target.position.set(0, -.1, -19); car.root.add(headlights, headlights.target);
   const carPosition = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), lookAt = new THREE.Vector3();
   let wasReady = true, previousPhase = 'ready', previousDistance = 0, compact = false;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -143,15 +150,16 @@ export function createScene3D(canvas, onUnavailable) {
     const distance = run.distance + (failed ? progress * run.speed * .35 : 0), p = roadPose(distance, DRIVING_LANE + (failed ? progress * progress * 6 : 0));
     car.root.position.set(p.x, p.y + (failed ? Math.sin(progress * Math.PI) * 2 : 0), p.z);
     car.root.rotation.set(distance < RULES.bayStart ? DOWNHILL : 0, -p.heading, failed ? (reduced ? .4 : progress * Math.PI * 2.5) : 0, 'YXZ');
-    car.update(distance, run.force, steeringAt(distance)); carPosition.copy(car.root.position);
+    car.update(distance, run.force, steeringAt(distance), run.speed); carPosition.copy(car.root.position);
     const right = new THREE.Vector3(Math.cos(p.heading), 0, Math.sin(p.heading)), forward = new THREE.Vector3(Math.sin(p.heading), 0, -Math.cos(p.heading));
     const ready = run.phase === 'ready';
     if (ready) {
       desiredCamera.copy(carPosition).addScaledVector(right, 6.4).addScaledVector(forward, 7.8); desiredCamera.y += 2.9;
       lookAt.copy(carPosition).addScaledVector(right, compact ? .7 : 2.8); lookAt.y += 1.05;
     } else {
-      desiredCamera.copy(carPosition).addScaledVector(right, 3.1).addScaledVector(forward, -11); desiredCamera.y += 5.1;
-      const ahead = roadPose(distance + 17, DRIVING_LANE); lookAt.set(ahead.x, ahead.y + .7, ahead.z);
+      // Follow the previous road pose so the car visibly rotates into the bend.
+      const behind = roadPose(distance - 10, DRIVING_LANE + 3.1); desiredCamera.set(behind.x, behind.y + 4.6, behind.z);
+      const ahead = roadPose(distance + 10, DRIVING_LANE); lookAt.set(ahead.x, ahead.y + .65, ahead.z);
     }
     const resetCamera = ready !== wasReady || (run.phase === 'running' && previousPhase !== 'running') || run.distance < previousDistance;
     if (resetCamera || ready || run.paused) camera.position.copy(desiredCamera);
@@ -159,7 +167,7 @@ export function createScene3D(canvas, onUnavailable) {
     const fov = compact ? 62 : ready ? 38 : 48;
     if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
     camera.lookAt(lookAt); wasReady = ready; previousPhase = run.phase; previousDistance = run.distance;
-    sun.position.copy(carPosition).add(new THREE.Vector3(-10, 20, -12)); sun.target.position.copy(carPosition);
+    sun.position.copy(carPosition).add(new THREE.Vector3(9, 10, -11)); sun.target.position.copy(carPosition);
     renderer.render(scene, camera);
   }
   canvas.addEventListener('webglcontextlost', event => { event.preventDefault(); onUnavailable(); });
