@@ -1,42 +1,49 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>3D 场景验收</title>
-<style>body{margin:0;background:#09151e;color:#c7e4d6;font:14px system-ui}header{padding:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}button{padding:10px 16px;background:#8de5bf;border:0;border-radius:5px}canvas{display:block;width:100%;height:75vh}#status{padding:18px}</style>
-<header>3D 场景验收 <button id="showcase">车辆展示</button><button data-distance="215">第一弯道</button><button data-distance="380">第二弯道</button><button data-distance="495">停车区</button><button id="drive">动态过弯</button><button id="lose">模拟图形上下文丢失</button></header>
+<style>body{margin:0;background:#09151e;color:#c7e4d6;font:14px system-ui}header{padding:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}button,select{padding:10px 16px;background:#8de5bf;border:0;border-radius:5px}canvas{display:block;width:100%;height:75vh}#status{padding:18px}</style>
+<header>3D 场景验收 <label>车型<select id="vehicle"></select></label><label>赛道<select id="track"></select></label><button id="showcase">车辆展示</button><button id="first">第一弯道</button><button id="last">最后弯道</button><button id="bay">停车区</button><button id="drive">动态通关</button><button id="lose">模拟图形上下文丢失</button></header>
 <canvas id="scene" aria-label="当前关卡的 3D 场景"></canvas><div id="status" role="status"></div>
 <script type="module">
 import { createScene3D } from '../docs/scene3d.js';
 import { createRun, step } from '../docs/engine.js';
+import { VEHICLES, TRACKS, getTrack } from '../docs/catalog.js';
 const canvas = document.querySelector('canvas'), status = document.querySelector('#status');
-const renderer = createScene3D(canvas, () => { status.textContent = '已收到 3D 不可用通知'; });
-let run = createRun(), driving = false;
+for (const [id, items] of [['vehicle',VEHICLES],['track',TRACKS]]) document.querySelector(`#${id}`).innerHTML = items.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
+let choice = { vehicleId: 'mpv', trackId: 'coast' }, run = createRun(choice), driving = false;
+let renderer = createScene3D(canvas, () => { driving = false; status.textContent = '已收到 3D 不可用通知'; }, choice);
 const resize = () => { const rect = canvas.getBoundingClientRect(); renderer.resize(rect.width, rect.height); renderer.render(run, 1 / 60); };
 new ResizeObserver(resize).observe(canvas);
-function sample(distance) {
-  driving = false;
-  run = createRun(); run.phase = 'running';
-  while (run.phase === 'running' && run.distance < distance && run.elapsed < 90) {
-    const target = run.distance < 250 ? 72 : run.distance < 400 ? 48 : Math.sqrt(Math.max(0, 4.2 * (505 - run.distance))) * 3.6;
-    step(run, 1 / 120, run.force < (run.speed * 3.6 > target ? 1370 : 300));
-  }
-  run.paused = true; resize();
-  status.textContent = `${run.phase} · ${run.distance.toFixed(1)} m · ${Math.round(run.speed * 3.6)} km/h · 已通过 ${run.gates} 个弯道`;
+function report() { status.textContent = `${getTrack(choice.trackId).name} · ${run.phase} · ${run.distance.toFixed(1)} m · ${Math.round(run.speed * 3.6)} km/h · 已通过 ${run.gates} 个弯道`; }
+function advance(dt) {
+  const rules = getTrack(choice.trackId).rules, gate = rules.gates[run.gates], center = (rules.bayStart + rules.bayEnd) / 2;
+  const target = gate ? gate.speed - 6 : Math.sqrt(Math.max(0, 4.2 * (center - run.distance))) * 3.6;
+  step(run,dt,run.force < (run.speed * 3.6 > target ? 1370 : 300));
 }
-document.querySelector('#showcase').onclick = () => { driving = false; run = createRun(); resize(); status.textContent = '车辆展示 · 双拼车漆 / 玻璃 / 灯组'; };
-document.querySelector('#drive').onclick = () => { sample(170); run.paused = false; driving = true; };
-for (const button of document.querySelectorAll('[data-distance]')) button.onclick = () => sample(Number(button.dataset.distance));
+function sample(distance) {
+  driving = false; run = createRun(choice); run.phase = 'running';
+  while (run.phase === 'running' && run.distance < distance && run.elapsed < 100) advance(1 / 120);
+  run.paused = true; resize(); report();
+}
+function select() {
+  driving = false; choice = { vehicleId: document.querySelector('#vehicle').value, trackId: document.querySelector('#track').value };
+  renderer.dispose(); renderer = createScene3D(canvas, () => { driving = false; status.textContent = '已收到 3D 不可用通知'; }, choice);
+  run = createRun(choice); resize(); report();
+}
+document.querySelector('#vehicle').onchange = select; document.querySelector('#track').onchange = select;
+document.querySelector('#showcase').onclick = () => { driving = false; run = createRun(choice); resize(); report(); };
+document.querySelector('#first').onclick = () => sample(getTrack(choice.trackId).rules.gates[0].at + 30);
+document.querySelector('#last').onclick = () => sample(getTrack(choice.trackId).rules.gates.at(-1).at + 30);
+document.querySelector('#bay').onclick = () => sample(getTrack(choice.trackId).rules.bayStart + 30);
+document.querySelector('#drive').onclick = () => { sample(getTrack(choice.trackId).rules.gates[0].at - 10); run.paused = false; driving = true; };
 document.querySelector('#lose').onclick = () => canvas.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
 let previousTime;
 function frame(time) {
   const dt = previousTime === undefined ? 0 : Math.min(.05, (time - previousTime) / 1000); previousTime = time;
   if (driving) {
-    const target = run.distance < 250 ? 72 : run.distance < 400 ? 48 : Math.sqrt(Math.max(0, 4.2 * (505 - run.distance))) * 3.6;
-    const pressing = run.force < (run.speed * 3.6 > target ? 1370 : 300);
-    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) step(run, Math.min(remaining, 1 / 120), pressing);
-    renderer.render(run, dt); status.textContent = `${run.phase} · ${run.distance.toFixed(1)} m · ${Math.round(run.speed * 3.6)} km/h · 已通过 ${run.gates} 个弯道`;
-    if (run.phase !== 'running') driving = false;
+    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advance(Math.min(remaining,1 / 120));
+    renderer.render(run,dt); report(); if (run.phase !== 'running') driving = false;
   }
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
-sample(215);
+requestAnimationFrame(frame); resize();
 </script></html>

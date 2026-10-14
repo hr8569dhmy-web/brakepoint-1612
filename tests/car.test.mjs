@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import * as THREE from '../docs/vendor/three.module.js';
 import { createCar } from '../docs/car3d.js';
 import { steeringAt } from '../docs/scene3d.js';
+import { VEHICLES } from '../docs/catalog.js';
 
 test('car glass and crowned hood remain outside the body, and actual wheels and lean follow steering', () => {
   // Canvas is only used for local plate/halo/shadow textures; no renderer is mocked.
   const previous = globalThis.document;
   globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ({ fillRect() {}, fillText() {}, createRadialGradient: () => ({ addColorStop() {} }) }) }) };
-  let car;
-  try { car = createCar(); } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+  let cars;
+  try { cars = VEHICLES.map(vehicle => createCar(vehicle.id)); } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+  const car = cars[0];
   car.root.updateMatrixWorld(true);
   const bodyMeshes = []; car.body.traverse(item => { if (item.isMesh) bodyMeshes.push(item); });
   const probes = [
@@ -24,7 +26,7 @@ test('car glass and crowned hood remain outside the body, and actual wheels and 
     const hits = ray.intersectObjects(bodyMeshes, false);
     assert.equal(hits[0]?.object.name, name, `${name} must be visible rather than buried in paint`);
   }
-  car.root.traverse(item => {
+  for (const vehicle of cars) vehicle.root.traverse(item => {
     if (!item.isMesh) return;
     for (const key of ['position', 'normal']) {
       const attr = item.geometry.getAttribute(key);
@@ -32,6 +34,9 @@ test('car glass and crowned hood remain outside the body, and actual wheels and 
       assert.ok(Array.from(attr.array).every(Number.isFinite), `finite ${key} for ${item.name}`);
     }
   });
+  const sizes = cars.map(vehicle => { vehicle.root.updateMatrixWorld(true); return new THREE.Box3().setFromObject(vehicle.body).getSize(new THREE.Vector3()); });
+  assert.ok(sizes[2].y < sizes[0].y * .85, 'coupe has an actually lower roof');
+  assert.ok(sizes[1].y > sizes[0].y && sizes[1].z < sizes[0].z, 'SUV is taller and shorter than MPV');
   const wheels = car.root.children.filter(item => item.name === 'frontWheel'); assert.equal(wheels.length, 2);
   for (const distance of [210, 380]) {
     const steer = steeringAt(distance); car.update(distance, 900, steer, 20);

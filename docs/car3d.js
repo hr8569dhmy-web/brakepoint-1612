@@ -1,11 +1,14 @@
 import * as THREE from './vendor/three.module.js';
+import { getVehicle } from './catalog.js?v=choices-1';
 
-// Independently built MPV geometry; no assets or code from the reference game.
-export function createCar() {
+// Independently built vehicle geometry; no copied reference-game assets.
+export function createCar(vehicleId = 'mpv') {
+  const model = getVehicle(vehicleId), sporty = model.id === 'sport';
+  const cabinY = y => 1.13 + (y - 1.13) * model.cabinScale;
   const root = new THREE.Group(), body = new THREE.Group();
-  root.add(body);
-  const paint = new THREE.MeshPhysicalMaterial({ color: '#0b101a', metalness: .82, roughness: .19, clearcoat: 1, clearcoatRoughness: .12 });
-  const roof = new THREE.MeshPhysicalMaterial({ color: '#d2bd96', metalness: .72, roughness: .24, clearcoat: 1, clearcoatRoughness: .16 });
+  root.add(body); root.scale.set(...model.scale); root.name = model.id;
+  const paint = new THREE.MeshPhysicalMaterial({ color: model.paint, metalness: .82, roughness: .19, clearcoat: 1, clearcoatRoughness: .12 });
+  const roof = new THREE.MeshPhysicalMaterial({ color: model.roof, metalness: .72, roughness: .24, clearcoat: 1, clearcoatRoughness: .16 });
   const glass = new THREE.MeshPhysicalMaterial({ color: '#101c29', metalness: .18, roughness: .07, clearcoat: 1, side: THREE.DoubleSide });
   const chrome = new THREE.MeshStandardMaterial({ color: '#d4d8da', metalness: 1, roughness: .14 });
   const rubber = new THREE.MeshStandardMaterial({ color: '#0c0f13', roughness: .92 });
@@ -44,11 +47,11 @@ export function createCar() {
 
   const cabin = new THREE.Shape();
   cabin.moveTo(-1.35, 1.13); cabin.lineTo(-.61, 1.92);
-  cabin.quadraticCurveTo(-.46, 2.1, -.16, 2.105); cabin.quadraticCurveTo(1.25, 2.14, 2.16, 2.08);
-  cabin.quadraticCurveTo(2.57, 2.02, 2.61, 1.75); cabin.lineTo(2.64, 1.13); cabin.closePath();
+  cabin.quadraticCurveTo(-.46, 2.1, -.16, 2.105); cabin.quadraticCurveTo(model.rearRoof * .6, 2.14, model.rearRoof, 2.08);
+  cabin.quadraticCurveTo(sporty ? 1.4 : 2.57, 2.02, sporty ? 1.6 : 2.61, 1.75); cabin.lineTo(sporty ? 2.35 : 2.64, 1.13); cabin.closePath();
   const upper = profile(cabin, 2.08, roof, .09); upper.name = 'cabin';
   const vertices = upper.geometry.getAttribute('position');
-  for (let i = 0; i < vertices.count; i++) vertices.setX(i, vertices.getX(i) * cabinWidth(vertices.getY(i)) / 1.04);
+  for (let i = 0; i < vertices.count; i++) { const y = vertices.getY(i); vertices.setX(i, vertices.getX(i) * cabinWidth(y) / 1.04); vertices.setY(i, cabinY(y)); }
   upper.geometry.computeVertexNormals();
 
   // Crown the hood across its width and round its leading edge.
@@ -76,28 +79,28 @@ export function createCar() {
   wind.moveTo(-.81, 0); wind.quadraticCurveTo(-.89, .01, -.85, .1); wind.lineTo(-.73, .77);
   wind.quadraticCurveTo(-.71, .85, -.62, .85); wind.lineTo(.62, .85);
   wind.quadraticCurveTo(.71, .85, .73, .77); wind.lineTo(.85, .1); wind.quadraticCurveTo(.89, .01, .81, 0); wind.closePath();
-  glassPanel(wind, (x, t) => { const rise = t * .86; return new THREE.Vector3(x, 1.23 + rise, -1.407 + rise * .96 - .018 * (1 - (x / .9) ** 2)); }, 'windshield');
-  for (const side of [-1, 1]) trim([new THREE.Vector3(side * .12, 1.245, -1.421), new THREE.Vector3(side * .7, 1.26, -1.398)], .014, dark);
+  glassPanel(wind, (x, t) => { const rise = t * .86; return new THREE.Vector3(x, cabinY(1.23 + rise), -1.407 + rise * .96 - .018 * (1 - (x / .9) ** 2)); }, 'windshield');
+  for (const side of [-1, 1]) trim([new THREE.Vector3(side * .12, cabinY(1.245), -1.421), new THREE.Vector3(side * .7, cabinY(1.26), -1.398)], .014, dark);
 
   const rear = new THREE.Shape();
   rear.moveTo(-.8, 0); rear.quadraticCurveTo(-.84, 0, -.84, .07); rear.lineTo(-.78, .57);
   rear.quadraticCurveTo(-.78, .66, -.68, .66); rear.lineTo(.68, .66); rear.quadraticCurveTo(.78, .66, .78, .57);
   rear.lineTo(.84, .07); rear.quadraticCurveTo(.84, 0, .8, 0); rear.closePath();
-  glassPanel(rear, (x, y) => new THREE.Vector3(x, 1.25 + y, 2.775 - y * .12), 'rearWindow');
+  glassPanel(rear, (x, y) => new THREE.Vector3(x, cabinY(1.25 + y), sporty ? 2.35 - y * .95 : 2.775 - y * .12), 'rearWindow');
 
   // Curved window corners and inward-tapered pillars follow the cabin surface.
   for (const side of [-1, 1]) {
-    for (const [front, back] of [[-1.15, -.15], [.015, 1.22], [1.38, 2.43]]) {
+    for (const [front, back] of (sporty ? [[-1.15, .1], [.25, 1.18]] : [[-1.15, -.15], [.015, 1.22], [1.38, 2.43]])) {
       const topFront = front < -.5 ? -.56 : front, shape = new THREE.Shape();
       shape.moveTo(front + .06, 1.255); shape.lineTo(back - .065, 1.255); shape.quadraticCurveTo(back, 1.255, back, 1.32);
       shape.lineTo(back - .065, 1.88); shape.quadraticCurveTo(back - .075, 1.97, back - .17, 1.97);
       shape.lineTo(topFront + .08, 1.97); shape.quadraticCurveTo(topFront + .02, 1.965, topFront, 1.89);
       shape.lineTo(front, 1.33); shape.quadraticCurveTo(front - .015, 1.255, front + .06, 1.255); shape.closePath();
-      glassPanel(shape, (z, y) => new THREE.Vector3(side * (cabinWidth(y) + .008), y, z), 'sideWindow');
+      glassPanel(shape, (z, y) => new THREE.Vector3(side * (cabinWidth(y) + .008), cabinY(y), z), 'sideWindow');
     }
     trim([[-1.38, 1.16], [-.1, 1.185], [1.8, 1.18], [2.52, 1.13]].map(([z, y]) => new THREE.Vector3(side * 1.08, y, z)), .021);
     trim([[-2.48, .43], [-.7, .4], [1.9, .4], [2.5, .46]].map(([z, y]) => new THREE.Vector3(side * 1.075, y, z)), .012);
-    for (const z of [-.13, 1.28]) {
+    for (const z of (sporty ? [.12] : [-.13, 1.28])) {
       trim([new THREE.Vector3(side * 1.086, .42, z), new THREE.Vector3(side * 1.086, .84, z), new THREE.Vector3(side * 1.08, 1.16, z)], .007, dark);
       const handle = mesh(new THREE.CapsuleGeometry(.024, .2, 4, 10), chrome); handle.rotation.x = Math.PI / 2; handle.position.set(side * 1.09, 1.065, z - .28);
       box(.021, .035, .22, side * 1.096, 1.068, z - .28, dark);
@@ -106,7 +109,7 @@ export function createCar() {
     const mirror = mesh(new THREE.SphereGeometry(1, 24, 16), roof); mirror.scale.set(.19, .1, .17); mirror.position.set(side * 1.24, 1.29, -.93);
     const mirrorGlass = mesh(new THREE.SphereGeometry(1, 20, 12), chrome); mirrorGlass.scale.set(.16, .065, .025); mirrorGlass.position.set(side * 1.24, 1.29, -.77);
     box(.04, .021, .25, side * 1.395, 1.27, -.95, headlight);
-    trim([new THREE.Vector3(side * .69, 2.18, -.13), new THREE.Vector3(side * .69, 2.205, 1), new THREE.Vector3(side * .69, 2.15, 2.08)], .017);
+    if (!sporty) trim([new THREE.Vector3(side * .69, cabinY(2.18), -.13), new THREE.Vector3(side * .69, cabinY(2.205), 1), new THREE.Vector3(side * .69, cabinY(2.15), 2.08)], .017);
     for (const z of [-1.72, 1.66]) {
       const arch = [];
       for (let i = 0; i <= 32; i++) { const angle = -.15 + i / 32 * (Math.PI + .3); arch.push(new THREE.Vector3(side * 1.107, .43 + Math.sin(angle) * .556, z + Math.cos(angle) * .556)); }
@@ -117,7 +120,7 @@ export function createCar() {
   sunroof.moveTo(-.65, 0); sunroof.lineTo(.65, 0); sunroof.quadraticCurveTo(.71, 0, .71, .08);
   sunroof.lineTo(.71, 1.64); sunroof.quadraticCurveTo(.71, 1.72, .64, 1.72); sunroof.lineTo(-.64, 1.72);
   sunroof.quadraticCurveTo(-.71, 1.72, -.71, 1.64); sunroof.lineTo(-.71, .08); sunroof.quadraticCurveTo(-.71, 0, -.65, 0); sunroof.closePath();
-  glassPanel(sunroof, (x, z) => new THREE.Vector3(x, 2.247 - .015 * ((z - .85) / .9) ** 2, z + .02), 'sunroof');
+  glassPanel(sunroof, (x, z) => new THREE.Vector3(x, cabinY(2.247 - .015 * ((z - .85) / .9) ** 2), (z + .02) * (sporty ? .65 : 1)), 'sunroof');
 
   // Layered grille, sculpted bumpers and segmented vertical lamp housings.
   const frontFace = new THREE.Shape();
@@ -131,8 +134,8 @@ export function createCar() {
   }
   trim([new THREE.Vector3(-.9, 1.045, -2.76), new THREE.Vector3(0, 1.06, -2.78), new THREE.Vector3(.9, 1.045, -2.76)], .022, headlight);
   for (const side of [-1, 1]) {
-    box(.11, .43, .045, side * .92, .75, -2.8, dark);
-    for (let i = 0; i < 4; i++) box(.045, .075, .03, side * .926, .59 + i * .098, -2.835, headlight);
+    if (sporty) box(.42, .045, .035, side * .71, .95, -2.835, headlight);
+    else { box(.11, .43, .045, side * .92, .75, -2.8, dark); for (let i = 0; i < 4; i++) box(.045, .075, .03, side * .926, .59 + i * .098, -2.835, headlight); }
     trim([new THREE.Vector3(side * .76, .33, -2.76), new THREE.Vector3(side * .84, .38, -2.79)], .025, headlight);
     box(.075, .48, .045, side * .94, .94, 2.75, taillight);
     for (let i = 0; i < 5; i++) box(.045, .058, .055, side * .943, .75 + i * .08, 2.78, taillight);
