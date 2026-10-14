@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>3D 场景验收</title>
+<style>body{margin:0;background:#09151e;color:#c7e4d6;font:14px system-ui}header{padding:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}button{padding:10px 16px;background:#8de5bf;border:0;border-radius:5px}canvas{display:block;width:100%;height:75vh}#status{padding:18px}</style>
+<header>3D 场景验收 <button data-distance="215">第一弯道</button><button data-distance="390">第二弯道</button><button data-distance="495">停车区</button><button id="lose">模拟图形上下文丢失</button></header>
+<canvas id="scene" aria-label="当前关卡的 3D 场景"></canvas><div id="status" role="status"></div>
+<script type="module">
+import { createScene3D } from '../docs/scene3d.js';
+import { createRun, step } from '../docs/engine.js';
+const canvas = document.querySelector('canvas'), status = document.querySelector('#status');
+const renderer = createScene3D(canvas, () => { status.textContent = '已收到 3D 不可用通知'; });
+let run = createRun();
+const resize = () => { const rect = canvas.getBoundingClientRect(); renderer.resize(rect.width, rect.height); renderer.render(run, 1 / 60); };
+new ResizeObserver(resize).observe(canvas);
+function sample(distance) {
+  run = createRun(); run.phase = 'running';
+  while (run.phase === 'running' && run.distance < distance && run.elapsed < 90) {
+    const target = run.distance < 250 ? 72 : run.distance < 400 ? 48 : Math.sqrt(Math.max(0, 4.2 * (505 - run.distance))) * 3.6;
+    step(run, 1 / 120, run.force < (run.speed * 3.6 > target ? 1370 : 300));
+  }
+  run.paused = true; resize();
+  status.textContent = `${run.phase} · ${run.distance.toFixed(1)} m · ${Math.round(run.speed * 3.6)} km/h · 已通过 ${run.gates} 个弯道`;
+}
+for (const button of document.querySelectorAll('[data-distance]')) button.onclick = () => sample(Number(button.dataset.distance));
+document.querySelector('#lose').onclick = () => canvas.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+sample(215);
+</script></html>

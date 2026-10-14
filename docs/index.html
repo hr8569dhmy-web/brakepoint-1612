@@ -9,7 +9,8 @@
 <main class="shell">
   <header class="topbar"><a class="brand" href="./" aria-label="临界制动首页"><span class="brand-icon">∥</span> 临界制动 <span class="brand-number">1612</span></a><div class="top-actions"><span class="edition">夜航试炼 / 01</span><button id="sound" class="icon-button" aria-label="开启音效" aria-pressed="false">音效 OFF</button><button id="help" class="icon-button" aria-label="查看玩法">玩法 ?</button></div></header>
   <section class="game" aria-label="夜间刹车挑战">
-    <div class="scene"><canvas id="world" aria-label="汽车在夜间山路行驶的游戏画面"></canvas><div class="scene-grain"></div><div class="scene-top"><span><i class="live-dot"></i> 海岸公路 · 下坡段</span><span id="phaseLabel">等待出发</span></div><div id="sceneMessage" class="scene-message" aria-live="polite"></div><div class="scene-bottom"><span class="scene-coords">NIGHT RUN <b>23:16</b></span><span id="sceneSpeed">车辆待命</span></div>
+    <div class="scene"><canvas id="world" aria-label="汽车在夜间山路行驶的 2D 游戏画面"></canvas><canvas id="world3d" class="hidden" aria-label="汽车沿夜间弯道行驶的 3D 游戏画面"></canvas><div class="scene-grain"></div><div class="scene-top"><span><i class="live-dot"></i> 海岸公路 · 下坡段</span><span id="phaseLabel">等待出发</span></div><div id="sceneMessage" class="scene-message" aria-live="polite"></div><div class="scene-bottom"><span class="scene-coords">NIGHT RUN <b>23:16</b></span><span id="sceneSpeed">车辆待命</span></div>
+      <div id="viewControls" class="view-controls"><span id="viewStatus" role="status"></span><div class="view-switch" role="group" aria-label="游戏视角"><button id="view3d" aria-label="3D 视角" aria-pressed="false">3D</button><button id="view2d" aria-label="2D 视角" aria-pressed="true">2D</button></div></div>
       <div id="overlay" class="overlay"><div id="panel" class="panel"></div></div>
     </div>
     <div class="dashboard">

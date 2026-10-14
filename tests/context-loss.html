@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="UTF-8"><title>3D 降级验收</title>
+<style>body{margin:0;background:#09151e;color:#c7e4d6;font:14px system-ui}header{padding:12px}button{padding:8px 18px}iframe{width:100%;height:90vh;border:0}</style>
+<header><button id="lose">模拟游戏 3D 上下文丢失</button> <button id="narrow">390px 窄屏</button> <span id="status" role="status">先在游戏中开始并暂停，再模拟丢失</span></header>
+<iframe src="../docs/" title="真实游戏"></iframe>
+<script>
+document.querySelector('#narrow').onclick = () => { const frame = document.querySelector('iframe'); frame.style.width = '390px'; frame.style.height = '844px'; };
+document.querySelector('#lose').onclick = () => {
+  const game = document.querySelector('iframe').contentDocument;
+  const canvas = game.getElementById('world3d');
+  const extension = canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context');
+  if (!extension) { document.querySelector('#status').textContent = '设备不支持此测试扩展'; return; }
+  extension.loseContext();
+};
+</script></html>
